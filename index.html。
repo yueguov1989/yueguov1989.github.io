@@ -1,0 +1,46 @@
+
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>測試｜我的文章網站</title>
+  <style>
+    body {
+      max-width: 720px;
+      margin: 60px auto;
+      padding: 24px;
+      font-family: system-ui, sans-serif;
+      line-height: 1.9;
+      color: #222;
+      background: #f6f7f9;
+    }
+    article {
+      background: white;
+      padding: 32px;
+      border-radius: 12px;
+    }
+    h1 { line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <article>
+    <h1>測試</h1>
+    <p>這是一篇測試文章，用來確認 GitHub Pages 網站能否正常顯示繁體中文內容。</p>
+
+    <h2>測試目的</h2>
+    <ul>
+      <li>確認網站能正常開啟。</li>
+      <li>確認繁體中文字元顯示正常。</li>
+      <li>確認文章標題、段落與清單排版正常。</li>
+    </ul>
+
+    <h2>結語</h2>
+    <p>如果你能正常閱讀這篇文章，就代表網站的基本文字呈現符合預期。</p>
+
+    <hr>
+    <p>文章狀態：測試草稿</p>
+    <p>語言：繁體中文</p>
+  </article>
+</body>
+</html>
