@@ -14,12 +14,12 @@ main{max-width:1080px;margin:24px auto;padding:0 18px 60px}.panel{background:var
 h2{font-size:18px;margin:0 0 13px}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.row>*{flex:1}
 input[type=text],select{width:100%;border:1px solid var(--line);border-radius:9px;padding:11px 12px;font:inherit;background:white;color:var(--ink)}
 input[type=file]{max-width:100%;padding:9px;border:1px dashed #9aa9c0;border-radius:9px;background:#f9fbff}
-button{border:0;border-radius:9px;padding:11px 16px;background:var(--blue);color:white;font:600 14px inherit;cursor:pointer}
+button{border:0;border-radius:9px;padding:11px 16px;background:var(--blue);color:white;font:600 14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;cursor:pointer}
 button:disabled{opacity:.45;cursor:not-allowed}.secondary{background:#edf1f7;color:#26344d}.danger{background:#fff0ef;color:#a3322b}
 .note{color:var(--muted);font-size:13px;margin:8px 0 0}.status{padding:10px 12px;border-radius:9px;background:#f0f4fa;color:#42516a;font-size:14px;margin-top:12px}.status.ok{background:#e9f7f0;color:#126443}.status.warn{background:#fff5df;color:#795000}.status.err{background:#fff0ef;color:#9b2e28}
 .progress{height:7px;background:#e8edf5;border-radius:10px;overflow:hidden;margin-top:12px}.progress>i{display:block;height:100%;width:0;background:var(--blue);transition:width .2s}
 .stats{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin-top:12px}
-.segment{border:1px solid var(--line);border-radius:11px;padding:14px;margin-top:12px}.segment-head{display:flex;justify-content:space-between;gap:10px;color:var(--muted);font-size:12px;margin-bottom:8px}.columns{display:grid;grid-template-columns:1fr 1fr;gap:12px}.columns label{font-size:12px;color:var(--muted);display:block;margin-bottom:5px}.columns textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--line);border-radius:8px;padding:10px;font:14px/1.65 inherit;color:var(--ink)}
+.segment{border:1px solid var(--line);border-radius:11px;padding:14px;margin-top:12px}.segment-head{display:flex;justify-content:space-between;gap:10px;color:var(--muted);font-size:12px;margin-bottom:8px}.columns{display:grid;grid-template-columns:1fr 1fr;gap:12px}.columns label{font-size:12px;color:var(--muted);display:block;margin-bottom:5px}.columns textarea{width:100%;min-height:100px;resize:vertical;border:1px solid var(--line);border-radius:8px;padding:10px;font:14px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
 .empty{padding:28px 12px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:10px}
 footer{color:var(--muted);font-size:12px;text-align:center;padding:10px}
 @media(max-width:700px){header{padding:20px}header h1{font-size:21px}.columns{grid-template-columns:1fr}.panel{padding:15px}.row>*{flex-basis:100%}}
@@ -51,7 +51,6 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:10px}
 </section>
 <footer>PDF 英漢翻譯器 · 目前為早期測試版。請勿上傳含有敏感個人資料的文件。</footer>
 </main>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs" type="module"></script>
 <script type="module">
 import * as pdfjsLib from "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs";
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs";
