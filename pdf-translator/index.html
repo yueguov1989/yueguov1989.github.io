@@ -31,21 +31,22 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:10px}
 <section class="panel">
 <h2>1. 選擇 PDF</h2>
 <div class="row"><input id="pdfFile" type="file" accept="application/pdf,.pdf"><button id="extractBtn" disabled>讀取 PDF 文字</button></div>
-<p class="note">PDF 會在你的瀏覽器本機解析；原始 PDF 不會直接上傳到翻譯伺服器。掃描圖片版 PDF 暫未支援 OCR。</p>
+<p class="note">PDF 在瀏覽器本機解析，原始 PDF 檔案不會上傳；但英文段落會傳送至 Google Cloud Translation API 取得初稿，再由本機 Qwen3 依全文語境校正。掃描圖片版 PDF 暫未支援 OCR。</p>
 <div id="fileStatus" class="status">請先選擇一份 PDF 檔案。</div>
 <div class="stats"><span id="pageStat">頁數：—</span><span id="charStat">文字：—</span><span id="chunkStat">段落：—</span></div>
 </section>
 <section class="panel">
 <h2>2. 翻譯設定</h2>
 <div class="row">
-<div><strong>翻譯引擎：Qwen3-1.7B（瀏覽器本機運行）</strong><p class="note">模型在你的設備上執行，不需 API 金鑰，也不會把 PDF 文字傳給翻譯伺服器。</p></div>
+<div><strong>翻譯流程：Google 翻譯 + Qwen3-1.7B</strong><p class="note">Qwen3 先分析全文；Google 翻譯產生初稿；Qwen3 再依全文背景、術語表及前後段落校正譯文。</p></div>
 <div style="max-width:190px"><label for="targetLang">譯文語言</label><select id="targetLang"><option value="zh-TW">繁體中文</option><option value="zh-CN">簡體中文</option></select></div>
 </div>
+<div style="margin-top:14px"><label for="googleApiKey"><strong>Google Cloud Translation API 金鑰</strong></label><input id="googleApiKey" type="password" autocomplete="off" placeholder="貼上你的 Google Cloud API 金鑰"><p class="note">金鑰只保留在目前頁面的記憶體中，不會寫入網站或瀏覽器儲存空間。建議在 Google Cloud 將金鑰限制為你的網站網址，並只允許 Cloud Translation API。啟用 API 通常需要設定帳單帳戶；每月前 500,000 個文字字元有免費額度，超出後可能收費。</p></div>
 <div class="row" style="margin-top:14px"><button id="loadModelBtn">載入本機翻譯模型</button><button id="translateBtn" disabled>開始翻譯</button><button id="exportBtn" class="secondary" disabled>匯出雙語 TXT</button></div>
-<div id="modelStatus" class="status warn">首次使用需要下載約 1–2GB 模型檔案；之後瀏覽器可能會快取模型。請使用支援 WebGPU 的新版 Chrome 或 Edge。</div>
+<div id="modelStatus" class="status warn">首次使用需要下載約 1–2GB 的 Qwen3 模型檔案；之後瀏覽器可能會快取模型。請使用支援 WebGPU 的新版 Chrome 或 Edge。開始翻譯前，還需要填入 Google Cloud Translation API 金鑰。</div>
 <div class="progress"><i id="modelProgress"></i></div>
 <div class="progress"><i id="progressBar"></i></div>
-<p class="note">翻譯前會先整理文章背景與術語，再逐段翻譯並參考相鄰段落。這能改善語境一致性，但小型模型仍可能誤解複雜語義，重要內容請人工校對。</p>
+<p class="note">翻譯前先由 Qwen3 整理文章背景與術語；每段再由 Google 翻譯，最後交給 Qwen3 結合全文資料校正。這能改善語境一致性，但小型模型仍可能誤解複雜語義，重要內容請人工校對。</p>
 </section>
 <section class="panel">
 <h2>3. 原文與譯文對照</h2>
@@ -156,20 +157,37 @@ async function buildDocumentContext(){
  if(notes.length===1)return notes[0];
  return await generateText("請合併以下同一篇文章各部分的分析筆記，整理成一致的全篇背景與術語表。保留各部分之間的關係，刪除重複內容。\n\n"+notes.join("\n---\n"),500);
 }
+async function googleTranslate(text){
+ const key=$("googleApiKey").value.trim();
+ if(!key)throw new Error("請先填入 Google Cloud Translation API 金鑰。");
+ const params=new URLSearchParams();
+ params.set("q",text);params.set("source","en");params.set("target",$("targetLang").value);params.set("format","text");
+ const response=await fetch("https://translation.googleapis.com/language/translate/v2?key="+encodeURIComponent(key),{
+  method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},body:params.toString()
+ });
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok)throw new Error(data?.error?.message||("Google 翻譯 API 請求失敗（HTTP "+response.status+"）"));
+ const translated=data?.data?.translations?.[0]?.translatedText;
+ if(typeof translated!=="string"||!translated.trim())throw new Error("Google 翻譯沒有回傳有效譯文。");
+ const box=document.createElement("textarea");box.innerHTML=translated;return box.value;
+}
 $("translateBtn").addEventListener("click",async()=>{
- if(!generator){setStatus("modelStatus","請先載入本機模型。","warn");return}
+ if(!generator){setStatus("modelStatus","請先載入本機 Qwen3 模型。","warn");return}
+ if(!$("googleApiKey").value.trim()){setStatus("modelStatus","請先填入 Google Cloud Translation API 金鑰。","warn");return}
  $("translateBtn").disabled=true;let done=0;
  try{
   const context=await buildDocumentContext();
   for(let i=0;i<segments.length;i++){
    const before=i>0?segments[i-1].source:"";
    const after=i+1<segments.length?segments[i+1].source:"";
-   const prompt="請將下列英文段落翻譯成"+($("targetLang").value==="zh-TW"?"繁體中文":"簡體中文")+"。必須依據整篇文章背景判斷詞義、代名詞和專業術語，保持語氣與術語一致。只輸出譯文，不要摘要、解釋或補充。\n\n【全篇背景與術語表】\n"+context+"\n\n【前一段（只作語境參考）】\n"+before+"\n\n【本次需要翻譯的段落】\n"+segments[i].source+"\n\n【下一段（只作語境參考）】\n"+after;
-   setStatus("modelStatus","正在翻譯第 "+(i+1)+" / "+segments.length+" 段…");
-   segments[i].translation=await generateText(prompt,900);
+   setStatus("modelStatus","Google 翻譯正在處理第 "+(i+1)+" / "+segments.length+" 段…");
+   const googleDraft=await googleTranslate(segments[i].source);
+   const prompt="你是專業英譯中校對編輯。請以英文原文為準，校正 Google 翻譯初稿。必須結合整篇文章背景判斷多義詞、代名詞指涉、專業概念及上下文邏輯；保留原文全部資訊，不要擅自增刪。沿用全篇術語表與語氣。只輸出修訂後譯文，不要解釋。\n\n【目標語言】\n"+($("targetLang").value==="zh-TW"?"繁體中文":"簡體中文")+"\n\n【全篇背景與術語表（由 Qwen3 分析）】\n"+context+"\n\n【前一段英文（語境參考）】\n"+before+"\n\n【本段英文原文】\n"+segments[i].source+"\n\n【Google 翻譯初稿】\n"+googleDraft+"\n\n【下一段英文（語境參考）】\n"+after;
+   setStatus("modelStatus","Qwen3 正在結合全文語境校正第 "+(i+1)+" / "+segments.length+" 段…");
+   segments[i].translation=await generateText(prompt,1000);
    done++;$("progressBar").style.width=(done/segments.length*100)+"%";render();
   }
-  setStatus("modelStatus","翻譯完成，共 "+done+" 段。譯文可手動修改並匯出。","ok");
+  setStatus("modelStatus","翻譯與語境校正完成，共 "+done+" 段。譯文可手動修改並匯出。","ok");
  }catch(e){setStatus("modelStatus",e.message+"；已完成 "+done+" 段，可重新嘗試。","err")}
  finally{$("translateBtn").disabled=!generator}
 });
