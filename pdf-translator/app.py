@@ -3,7 +3,6 @@ import threading
 from contextlib import asynccontextmanager
 from typing import Literal
 
-import argostranslate.package
 import argostranslate.translate
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,22 +21,8 @@ TRANSLATION_LOCK = threading.Lock()
 def ensure_translation_model():
     global MODEL_READY, MODEL_ERROR
     try:
-        installed = argostranslate.translate.get_translation_from_codes("en", "zh")
-        if installed is None:
-            argostranslate.package.update_package_index()
-            packages = argostranslate.package.get_available_packages()
-            candidates = [
-                p for p in packages
-                if p.from_code == "en" and p.to_code == "zh"
-            ]
-            if not candidates:
-                raise RuntimeError("Argos Translate package index has no en→zh model")
-            # Prefer the newest package version exposed by the package index.
-            package = sorted(candidates, key=lambda p: str(p.package_version))[-1]
-            package_path = argostranslate.package.download_package(package)
-            argostranslate.package.install_from_path(package_path)
         if argostranslate.translate.get_translation_from_codes("en", "zh") is None:
-            raise RuntimeError("English-to-Chinese model installation did not complete")
+            raise RuntimeError("English-to-Chinese model is not present in the container image")
         MODEL_READY = True
         MODEL_ERROR = None
     except Exception as exc:
