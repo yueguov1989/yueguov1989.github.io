@@ -4,12 +4,13 @@
 
 ## 翻譯引擎
 
-目前前端使用 **Qwen3-1.7B** 的 Transformers.js 量化版本，透過 WebGPU 在瀏覽器本機執行。模型具備多語言指令理解能力，可在翻譯前整理文章背景、人物／機構指涉與術語表，再逐段翻譯時參考全篇背景及相鄰段落。
+目前採用 **Google Cloud Translation Basic (NMT) + Qwen3-1.7B** 的混合流程：Qwen3 先在瀏覽器本機分析文章背景、人物／機構指涉與術語表；Google 翻譯 API 逐段產生初稿；最後由本機 Qwen3 參考全篇背景及相鄰段落校正初稿。
 
 - 模型：`huggingworld/Qwen3-1.7B`
 - 執行方式：Transformers.js + WebGPU + `q4f16`
 - 授權：Qwen3 系列採 Apache-2.0；請同時查閱衍生模型倉庫的模型卡與授權資訊。
-- PDF 原始檔與抽取文字都在瀏覽器本機處理，不會傳送到自建翻譯 API。
+- PDF 原始檔在瀏覽器本機解析，不會上傳原始 PDF；但抽取出的英文段落會傳送到 Google Cloud Translation API 進行翻譯。
+- Google API 金鑰只存在當前頁面記憶體，不寫入 localStorage 或網站原始碼。建議在 Google Cloud Console 將 API 金鑰限制為網站 HTTP referrer，並限制只能呼叫 Cloud Translation API。
 - 首次使用需下載模型檔案，之後是否快取取決於瀏覽器儲存空間與設定。
 
 ## 主要功能
@@ -21,7 +22,7 @@
 - 手動修改譯文。
 - 匯出中英對照 TXT。
 
-## 硬體與瀏覽器要求
+## Google 翻譯 API 設定\n\n1. 在 Google Cloud Console 建立或選擇專案。\n2. 啟用 Cloud Translation API（Basic / v2）。\n3. 建立 API 金鑰，並設定 HTTP referrer 限制為 `https://yueguov1989.github.io/*`，API 限制只允許 Cloud Translation API。\n4. 在翻譯器頁面貼上金鑰。金鑰只在當前頁面記憶體中使用，重新整理頁面後需要重新輸入。\n\nGoogle Cloud Translation NMT 目前每月前 500,000 個字元有免費額度；使用前仍可能需要啟用帳單帳戶。超出免費額度可能產生費用，請在 Google Cloud 設定預算與配額警示。免費額度及價格以 Google 官方定價頁為準：<https://cloud.google.com/translate/pricing>。\n\n## 硬體與瀏覽器要求
 
 - 必須使用支援 WebGPU 的新版瀏覽器，建議新版 Chrome 或 Edge。
 - 模型量化後仍需要較多記憶體和 GPU 資源。低記憶體設備可能無法載入或速度很慢。
@@ -43,4 +44,4 @@ Qwen3 是語言模型，不是專用翻譯引擎。這個網頁會先把長文�
 
 ## 隱私
 
-模型在瀏覽器本機推理；PDF 文字不會傳送至本專案的翻譯後端。載入模型時，瀏覽器會從模型託管平台下載模型檔案。請勿在不受信任的裝置上處理敏感文件。
+Qwen3 推理在瀏覽器本機進行；Google 翻譯初稿服務會收到 PDF 抽取出的文字段落。載入模型時，瀏覽器會從模型託管平台下載模型檔案。請勿在不受信任的裝置上處理敏感文件。
