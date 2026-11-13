@@ -3,9 +3,8 @@ services:
     name: pdf-translator-api
     runtime: docker
     plan: free
-    rootDir: pdf-translator
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
+    dockerfilePath: ./pdf-translator/Dockerfile
+    dockerContext: ./pdf-translator
     healthCheckPath: /health
     envVars:
       - key: ALLOWED_ORIGINS
