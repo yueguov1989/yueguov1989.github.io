@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: pdf-translator-api
+    runtime: docker
+    plan: free
+    rootDir: pdf-translator
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: ALLOWED_ORIGINS
+        value: https://yueguov1989.github.io
