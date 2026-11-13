@@ -44,8 +44,8 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:10px}
 <div class="row" style="margin-top:14px">
 <div><label for="translationProvider"><strong>免費翻譯來源</strong></label><select id="translationProvider"><option value="google">Google 翻譯網頁端點（非官方，可能限流）</option><option value="mymemory">MyMemory（免費額度有限）</option></select><p class="note">不需要 API 金鑰或付款資料。Google 網頁端點不是官方公開 API；若失敗會自動改用 MyMemory。MyMemory 免費服務有每日使用限制。</p></div>
 </div>
-<div class="row" style="margin-top:14px"><button id="loadModelBtn">載入本機翻譯模型</button><button id="translateBtn" disabled>開始翻譯</button><button id="exportBtn" class="secondary" disabled>匯出雙語 TXT</button></div>
-<div id="modelStatus" class="status warn">首次使用需要下載約 1–2GB 的 Qwen3 模型檔案；之後瀏覽器可能會快取模型。請使用支援 WebGPU 的新版 Chrome 或 Edge。不需要填寫 API 金鑰。</div>
+<div class="row" style="margin-top:14px"><button id="checkDeviceBtn" class="secondary">檢查設備與網絡</button><button id="loadModelBtn">載入本機翻譯模型</button><button id="translateBtn" disabled>開始翻譯</button><button id="exportBtn" class="secondary" disabled>匯出雙語 TXT</button></div>
+<div id="modelStatus" class="status warn">模型已改用單一 ONNX 權重檔，避開先前外部權重檔案載入錯誤。檔案約 1.43GB；請先檢查 WebGPU、設備記憶體及 Hugging Face 連線。不需要填寫 API 金鑰。</div>
 <div class="progress"><i id="modelProgress"></i></div>
 <div class="progress"><i id="progressBar"></i></div>
 <p class="note">翻譯前先由 Qwen3 整理文章背景與術語；每段再由免費翻譯服務產生初稿，最後交給 Qwen3 結合全文資料校正。這能改善語境一致性，但小型模型仍可能誤解複雜語義，重要內容請人工校對。</p>
@@ -63,7 +63,7 @@ const $ = id => document.getElementById(id);
 let segments = [];
 let sourceName = "document";
 let generator = null;
-let modelBusy = false;
+let modelBusy = false;\nlet lastDeviceCheck = null;
 const setStatus = (id,msg,type="") => { const el=$(id);el.textContent=msg;el.className="status "+type; };
 function splitText(text){
   const normalized=text.replace(/\r/g,"").replace(/[ \t]+\n/g,"\n").replace(/\n{3,}/g,"\n\n").trim();
@@ -129,8 +129,8 @@ async function loadModel(){
  try{
   setStatus("modelStatus","正在檢查 WebGPU 並下載 Qwen3-1.7B 量化模型。首次載入可能需要較長時間…");
   const {pipeline}=await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2");
-  generator=await pipeline("text-generation","huggingworld/Qwen3-1.7B",{
-   device:"webgpu",dtype:"q4f16",
+  generator=await pipeline("text-generation","onnx-community/Qwen3-1.7B-ONNX",{
+   device:"webgpu",dtype:"q4f16",use_external_data_format:false,
    progress_callback:p=>{
     if(p.status==="progress"&&Number.isFinite(p.progress)){
      $("modelProgress").style.width=Math.max(0,Math.min(100,p.progress))+"%";
@@ -143,7 +143,7 @@ async function loadModel(){
   setStatus("modelStatus","Qwen3-1.7B 已在本機載入。PDF 文字不會傳到翻譯伺服器。","ok");
   $("translateBtn").disabled=!segments.length;
  }catch(e){
-  generator=null;setStatus("modelStatus","模型載入失敗："+e.message+"。請確認 WebGPU、設備記憶體及網絡下載是否正常。","err");
+  generator=null;setStatus("modelStatus","模型載入失敗："+e.message+"。可按「檢查設備與網絡」查看 WebGPU、記憶體估計及 Hugging Face 連線資訊。","err");
  }finally{modelBusy=false;$("loadModelBtn").disabled=!!generator;$("loadModelBtn").textContent=generator?"模型已載入":"重新載入模型"}
 }
 $("loadModelBtn").addEventListener("click",loadModel);
@@ -214,7 +214,7 @@ $("translateBtn").addEventListener("click",async()=>{
    const after=i+1<segments.length?segments[i+1].source:"";
    setStatus("modelStatus","免費翻譯正在處理第 "+(i+1)+" / "+segments.length+" 段…");
    const googleDraft=await getFreeTranslation(segments[i].source);
-   const prompt="你是專業英譯中校對編輯。請以英文原文為準，校正 免費翻譯初稿。必須結合整篇文章背景判斷多義詞、代名詞指涉、專業概念及上下文邏輯；保留原文全部資訊，不要擅自增刪。沿用全篇術語表與語氣。只輸出修訂後譯文，不要解釋。\n\n【目標語言】\n"+($("targetLang").value==="zh-TW"?"繁體中文":"簡體中文")+"\n\n【全篇背景與術語表（由 Qwen3 分析）】\n"+context+"\n\n【前一段英文（語境參考）】\n"+before+"\n\n【本段英文原文】\n"+segments[i].source+"\n\n【Google 翻譯初稿】\n"+googleDraft+"\n\n【下一段英文（語境參考）】\n"+after;
+   const prompt="你是專業英譯中校對編輯。請以英文原文為準，校正 免費翻譯初稿。必須結合整篇文章背景判斷多義詞、代名詞指涉、專業概念及上下文邏輯；保留原文全部資訊，不要擅自增刪。沿用全篇術語表與語氣。只輸出修訂後譯文，不要解釋。\n\n【目標語言】\n"+($("targetLang").value==="zh-TW"?"繁體中文":"簡體中文")+"\n\n【全篇背景與術語表（由 Qwen3 分析）】\n"+context+"\n\n【前一段英文（語境參考）】\n"+before+"\n\n【本段英文原文】\n"+segments[i].source+"\n\n【免費機器翻譯初稿】\n"+googleDraft+"\n\n【下一段英文（語境參考）】\n"+after;
    setStatus("modelStatus","Qwen3 正在結合全文語境校正第 "+(i+1)+" / "+segments.length+" 段…");
    segments[i].translation=await generateText(prompt,1000);
    done++;$("progressBar").style.width=(done/segments.length*100)+"%";render();
