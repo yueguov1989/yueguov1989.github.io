@@ -64,3 +64,16 @@ GitHub Pages 只能託管靜態網站，不能執行 FastAPI。要讓任何地�
 - 繁體中文目前以 OpenCC 進行簡繁轉換，並非獨立的繁體翻譯模型。
 - 免費主機可能休眠、限流或停止服務；目前沒有已部署的永久免費後端。
 - 不應把含有機密或個人敏感資訊的文件交給未經信任的公開服務。
+
+## Render 免費後端部署（尚待帳戶授權）
+
+倉庫根目錄已加入 `render.yaml`。部署時：
+
+1. 登入 Render，選擇 **New → Blueprint**。
+2. 連接 GitHub，授權存取 `yueguov1989/yueguov1989.github.io`。
+3. 選取此 repository，Render 會讀取根目錄的 `render.yaml`。
+4. 確認服務名稱為 `pdf-translator-api`、方案為 Free，再建立服務。
+5. 部署成功後複製 Render 提供的 HTTPS 網址。
+6. 打開 PDF 翻譯器，在「翻譯後端網址」欄貼上該網址，按「測試後端連線」。
+
+注意：Render 免費 Web Service 會在閒置一段時間後休眠，重新喚醒需要等待；免費資源只有 512 MB RAM 和有限 CPU，Argos 模型是否能穩定載入仍需實際測試。若部署日誌顯示記憶體不足，不能靠修改前端解決，必須換更大規格的運算主機。
