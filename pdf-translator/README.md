@@ -13,8 +13,8 @@
 
 ## 翻譯引擎與費用
 
-- 本機模型：`huggingworld/Qwen3-1.7B`
-- 執行方式：Transformers.js + WebGPU + `q4f16`
+- 本機模型：`onnx-community/Qwen3-1.7B-ONNX`
+- 執行方式：Transformers.js + WebGPU + `q4f16`，選用單一 ONNX 權重檔以避開外部 `.onnx_data` 權重掛載相容性問題
 - 模型卡列出支援 100 多種語言及 32,768 token 上下文；實際可用上下文會受瀏覽器記憶體、提示長度和生成設定影響。
 - Google 翻譯網頁端點不需要 API 金鑰，但它不是 Google 官方公開 API，沒有穩定性、配額或長期可用保證，可能限流或變更。
 - MyMemory 是備援免費服務，免費使用額度有限；若大量翻譯，可能觸及每日限制。
