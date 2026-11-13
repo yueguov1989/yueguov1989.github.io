@@ -107,7 +107,7 @@ $("extractBtn").addEventListener("click",async()=>{
 function apiBase(){return $("apiUrl").value.trim().replace(/\/$/,"")}
 $("checkBtn").addEventListener("click",async()=>{
  const base=apiBase();if(!base){setStatus("apiStatus","請先輸入已部署的後端網址。","warn");return}
- try{const r=await fetch(base+"/health");if(!r.ok)throw new Error("HTTP "+r.status);const j=await r.json();setStatus("apiStatus","後端連線成功："+(j.status||"ok"),"ok")}
+ try{const r=await fetch(base+"/health");if(!r.ok)throw new Error("HTTP "+r.status);const j=await r.json();if(!j.model_ready){setStatus("apiStatus","已連上後端，但翻譯模型尚未就緒："+(j.error||"請稍後再試"),"warn")}else{setStatus("apiStatus","後端與翻譯模型均已就緒。","ok")}}
  catch(e){setStatus("apiStatus","連線失敗："+e.message+"。請確認網址、HTTPS 與 CORS 設定。","err")}
 });
 $("translateBtn").addEventListener("click",async()=>{
