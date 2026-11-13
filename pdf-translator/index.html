@@ -122,12 +122,51 @@ async function generateText(prompt,maxTokens=500){
  if(typeof out!=="string")out=String(out);
  return out.trim();
 }
+async function checkDevice(){
+ const details=[];
+ const memory=Number(navigator.deviceMemory||0);
+ details.push("瀏覽器："+navigator.userAgent);
+ details.push("設備記憶體估計："+(memory?memory+" GB（瀏覽器提供的粗略分級）":"瀏覽器未提供記憶體估計"));
+ if(performance.memory?.jsHeapSizeLimit)details.push("JS Heap 上限："+Math.round(performance.memory.jsHeapSizeLimit/1024/1024)+" MB（不等於 GPU 可用記憶體）");
+ let adapter=null;
+ if(!navigator.gpu){details.push("WebGPU：不支援或未啟用")}
+ else{
+  try{
+   adapter=await navigator.gpu.requestAdapter();
+   if(!adapter)details.push("WebGPU：API 存在，但無法取得 GPU adapter");
+   else{
+    const info=adapter.info||{};
+    details.push("WebGPU：成功取得 GPU adapter");
+    if(info.vendor)details.push("GPU 廠商："+info.vendor);
+    if(info.architecture)details.push("GPU 架構："+info.architecture);
+    if(info.device)details.push("GPU 裝置："+info.device);
+    if(adapter.limits?.maxBufferSize)details.push("GPU 最大 Buffer："+Math.round(adapter.limits.maxBufferSize/1024/1024)+" MB");
+   }
+  }catch(e){details.push("WebGPU 檢查失敗："+e.message)}
+ }
+ let network="未能確認";
+ try{
+  const r=await fetch("https://huggingface.co/onnx-community/Qwen3-1.7B-ONNX/resolve/main/onnx/model_q4f16.onnx",{method:"HEAD",cache:"no-store"});
+  network=r.ok?"Hugging Face 模型檔連線成功（HTTP "+r.status+"）":"Hugging Face 回應 HTTP "+r.status;
+  const len=Number(r.headers.get("content-length")||0);
+  if(len)network+="，檔案大小約 "+(len/1024/1024/1024).toFixed(2)+" GB";
+ }catch(e){network="無法完成模型檔 HEAD 檢查："+e.message+"（可能是網絡、跨域或 CDN 限制；不代表實際下載必然失敗）"}
+ details.push("模型下載連線："+network);
+ const supported=!!adapter;
+ lastDeviceCheck={supported,memory,network,details};
+ const msg=details.join("\n")+(supported?(memory&&memory<6?"\n記憶體估計偏低；即使 WebGPU 可用，仍可能無法容納 1.43GB 模型及推理快取。":"\nWebGPU 初步檢查通過；仍需實際載入模型驗證。"):"\n未能取得 WebGPU adapter，請使用支援 WebGPU 的桌面版 Chrome／Edge。");
+ setStatus("modelStatus",msg,supported?(memory&&memory<6?"warn":"ok"):"err");
+ return lastDeviceCheck;
+}
+$("checkDeviceBtn").addEventListener("click",async()=>{$("checkDeviceBtn").disabled=true;try{await checkDevice()}finally{$("checkDeviceBtn").disabled=false}});
 async function loadModel(){
  if(generator||modelBusy)return;
- if(!navigator.gpu){setStatus("modelStatus","此瀏覽器或設備不支援 WebGPU，無法載入本機模型。請改用支援 WebGPU 的新版 Chrome／Edge 與相容設備。","err");return}
  modelBusy=true;$("loadModelBtn").disabled=true;
  try{
-  setStatus("modelStatus","正在檢查 WebGPU 並下載 Qwen3-1.7B 量化模型。首次載入可能需要較長時間…");
+  const check=await checkDevice();
+  if(!check.supported)throw new Error("此瀏覽器或設備無法取得 WebGPU adapter");
+  if(check.memory&&check.memory<6)throw new Error("瀏覽器回報設備記憶體約 "+check.memory+"GB，低於此 1.43GB 模型的建議需求。為避免大量下載後仍無法載入，已暫停；請改用記憶體較充足的設備");
+  setStatus("modelStatus","設備初步檢查完成，正在載入單一 ONNX 權重版 Qwen3-1.7B…");
   const {pipeline}=await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2");
   generator=await pipeline("text-generation","onnx-community/Qwen3-1.7B-ONNX",{
    device:"webgpu",dtype:"q4f16",use_external_data_format:false,
@@ -135,7 +174,7 @@ async function loadModel(){
     if(p.status==="progress"&&Number.isFinite(p.progress)){
      $("modelProgress").style.width=Math.max(0,Math.min(100,p.progress))+"%";
      setStatus("modelStatus","正在下載模型："+Math.round(p.progress)+"%");
-    }else if(p.status==="downloading")setStatus("modelStatus","正在下載模型檔案…");
+    }else if(p.status==="downloading")setStatus("modelStatus","正在下載 Qwen3 模型檔案…");
     else if(p.status==="ready")setStatus("modelStatus","模型載入完成。","ok");
    }
   });
@@ -143,7 +182,7 @@ async function loadModel(){
   setStatus("modelStatus","Qwen3-1.7B 已在本機載入。PDF 文字不會傳到翻譯伺服器。","ok");
   $("translateBtn").disabled=!segments.length;
  }catch(e){
-  generator=null;setStatus("modelStatus","模型載入失敗："+e.message+"。可按「檢查設備與網絡」查看 WebGPU、記憶體估計及 Hugging Face 連線資訊。","err");
+  generator=null;setStatus("modelStatus","模型載入失敗："+e.message+"。請參考上方設備與網絡檢查結果。","err");
  }finally{modelBusy=false;$("loadModelBtn").disabled=!!generator;$("loadModelBtn").textContent=generator?"模型已載入":"重新載入模型"}
 }
 $("loadModelBtn").addEventListener("click",loadModel);
