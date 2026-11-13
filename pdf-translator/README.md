@@ -1,25 +1,68 @@
-# PDF 英漢翻譯器（早期版本）
+# PDF 英漢翻譯器
 
 網站前端：<https://yueguov1989.github.io/pdf-translator/>
 
-## 目前已完成
+## 網站目前提供的功能
 
-- GitHub Pages 網頁介面。
-- 使用 PDF.js 在瀏覽器本機讀取可選取文字的 PDF。
-- 英文原文／中文譯文逐段對照。
-- 可手動修改譯文，並匯出雙語 TXT。
-- 前端只把抽取出的文字傳給翻譯 API，不會把原始 PDF 檔案上傳到後端。
+- 在瀏覽器選擇 PDF，使用 PDF.js 本機提取文字。
+- 英文原文與中文譯文逐段並排。
+- 選擇繁體中文或簡體中文。
+- 可以手動修改每段譯文。
+- 匯出中英對照 TXT。
+- 原始 PDF 不會上傳；只有抽取出的文字會送到你指定的翻譯 API。
 
-## 技術底座
+## 尚未完成／目前限制
 
-- 前端：純 HTML/CSS/JavaScript + PDF.js。
-- API：Python + FastAPI。
-- 第一版翻譯引擎：Argos Translate（開源、可自架），再用 OpenCC 將簡體轉為繁體。
-- API 目前未部署。沒有填入後端網址時，網站不會假裝翻譯成功。
+- 翻譯 API 需要先部署，網站才可真正翻譯。
+- 掃描圖片版 PDF 尚未支援 OCR。
+- 尚未提供 Word 或重新排版 PDF 匯出。
+- 第一版使用 Argos Translate 英譯中模型，並以 OpenCC 將簡體轉為繁體。它是可自行託管的開源翻譯引擎，不等同於大型語言模型的翻譯品質。
+- Render 免費服務只有 512 MB RAM、閒置後會休眠；Argos 模型能否在此規格穩定載入必須以部署測試確認，不能保證成功或持續可用。
 
-## 本機啟動 API（Windows 11）
+## 架構
 
-建議先在另一台有足夠記憶體的伺服器測試。你的電腦只有 4GB RAM，不建議在本機啟動翻譯服務。
+- 前端：GitHub Pages + HTML/CSS/JavaScript + PDF.js。
+- 後端：FastAPI + Argos Translate + OpenCC。
+- Render Blueprint 設定：儲存庫根目錄的 `render.yaml`。
+- Dockerfile 與後端程式：`pdf-translator/`。
+
+## 部署免費後端
+
+1. 登入 <https://render.com/>。
+2. 選 **New → Blueprint**。
+3. 連接 GitHub，選擇 `yueguov1989/yueguov1989.github.io`。
+4. Render 會讀取根目錄的 `render.yaml`。確認服務名稱 `pdf-translator-api`，方案為 Free，然後建立。
+5. 等待建置和部署。第一次建置需要下載 Argos 英譯中模型，可能需要一些時間。
+6. 部署後打開 Render 服務頁，複製它提供的 HTTPS 網址。
+7. 打開 <https://yueguov1989.github.io/pdf-translator/>，把網址貼到「翻譯後端網址」，按「測試後端連線」。
+8. 只有當網站顯示後端與翻譯模型均已就緒，才開始翻譯。
+
+如果部署顯示記憶體不足、模型載入失敗，或服務啟動後 `/health` 顯示 `model_ready: false`，表示免費主機無法承載目前模型；不要把這種狀態當作已部署成功。
+
+## API
+
+健康檢查：
+
+`GET /health`
+
+翻譯：
+
+`POST /api/translate`
+
+請求 JSON：
+
+```json
+{
+  "text": "The text to translate.",
+  "target_language": "zh-TW"
+}
+```
+
+`target_language` 支援 `zh-TW`（繁體中文）和 `zh-CN`（簡體中文）。
+
+## 本機啟動（Windows 11）
+
+你的電腦是 Windows 11、4GB RAM，不建議在這台電腦上同時執行大型翻譯模型與 PDF 工作流程。若只想測試 API，可在有足夠記憶體的環境執行：
 
 ```powershell
 py -3 -m venv .venv
@@ -29,57 +72,9 @@ pip install -r requirements.txt
 uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-健康檢查：<http://127.0.0.1:8000/health>
+## 安全與隱私
 
-## API
-
-`GET /health`
-
-`POST /api/translate`
-
-```json
-{
-  "text": "The text to translate.",
-  "target_language": "zh-TW"
-}
-```
-
-target_language 支援 `zh-TW`（繁體）和 `zh-CN`（簡體）。
-
-## 部署注意事項
-
-GitHub Pages 只能託管靜態網站，不能執行 FastAPI。要讓任何地方都能使用，必須把 API 部署到可從公網連線的伺服器，然後將該 HTTPS API 網址填入網站的「翻譯後端網址」。
-
-部署時設定環境變數：
-
-- `ALLOWED_ORIGINS=https://yueguov1989.github.io`
-
-不要把 Ollama 或 Python API 的管理端口直接暴露到公網。正式公開前還需要加入使用者限流、請求大小限制、逾時控制、錯誤記錄及濫用防護。
-
-## 已知限制
-
-- 掃描版 PDF 尚未支援 OCR。
-- 第一版匯出格式是 TXT，尚未做 Word／PDF 排版匯出。
-- Argos Translate 是輕量、可自架的基礎翻譯引擎，不等同於大型語言模型的翻譯品質。
-- 繁體中文目前以 OpenCC 進行簡繁轉換，並非獨立的繁體翻譯模型。
-- 免費主機可能休眠、限流或停止服務；目前沒有已部署的永久免費後端。
-- 不應把含有機密或個人敏感資訊的文件交給未經信任的公開服務。
-
-## Render 免費後端部署（尚待帳戶授權）
-
-倉庫根目錄已加入 `render.yaml`。部署時：
-
-1. 登入 Render，選擇 **New → Blueprint**。
-2. 連接 GitHub，授權存取 `yueguov1989/yueguov1989.github.io`。
-3. 選取此 repository，Render 會讀取根目錄的 `render.yaml`。
-4. 確認服務名稱為 `pdf-translator-api`、方案為 Free，再建立服務。
-5. 部署成功後複製 Render 提供的 HTTPS 網址。
-6. 打開 PDF 翻譯器，在「翻譯後端網址」欄貼上該網址，按「測試後端連線」。
-
-注意：Render 免費 Web Service 會在閒置一段時間後休眠，重新喚醒需要等待；免費資源只有 512 MB RAM 和有限 CPU，Argos 模型是否能穩定載入仍需實際測試。若部署日誌顯示記憶體不足，不能靠修改前端解決，必須換更大規格的運算主機。
-
-## 部署設定補充
-
-- Dockerfile 與 Docker build context 使用相對於 GitHub 儲存庫根目錄的明確路徑。
-- Argos 英譯中模型在 Docker image 建置階段下載並安裝，避免每次免費服務喚醒時重新下載模型。
-- Render 免費實例只有 512 MB RAM，模型是否能在此限制下正常載入仍需以實際部署結果驗證；若記憶體不足，免費規格可能無法承載此翻譯後端。
+- 不要把含有密碼、身分證號、銀行資料或其他機密內容的文件交給不受信任的公開後端。
+- 前端只傳送抽取出的文字，並非原始 PDF；但文字內容仍可能包含敏感資料。
+- 公開服務目前尚未加入使用者登入、配額、速率限制和濫用防護，不適合直接面向大量陌生使用者。
+- 自行託管可避免依賴第三方翻譯 API 的內容處理政策，但不能保證模型本身永不拒答，也不代表可以忽略適用法律。
