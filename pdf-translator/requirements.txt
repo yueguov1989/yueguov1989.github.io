@@ -1,4 +1,6 @@
 fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
-argostranslate>=1.9,<2
+ctranslate2>=4.4,<5
+transformers>=4.40,<5
+sentencepiece>=0.2,<1
 opencc-python-reimplemented>=0.1.7,<1
