@@ -1,8 +1,9 @@
 services:
   - type: web
-    name: pdf-translator-api
+    name: pdf-free-translator
     runtime: docker
     plan: free
+    region: singapore
     dockerfilePath: ./pdf-translator/Dockerfile
     dockerContext: ./pdf-translator
     healthCheckPath: /health
