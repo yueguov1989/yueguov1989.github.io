@@ -38,12 +38,14 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:10px}
 <section class="panel">
 <h2>2. 翻譯設定</h2>
 <div class="row">
-<div><label for="apiUrl">翻譯後端網址</label><input id="apiUrl" type="text" placeholder="例如：https://你的後端網址"></div>
+<div><strong>翻譯引擎：Qwen3-1.7B（瀏覽器本機運行）</strong><p class="note">模型在你的設備上執行，不需 API 金鑰，也不會把 PDF 文字傳給翻譯伺服器。</p></div>
 <div style="max-width:190px"><label for="targetLang">譯文語言</label><select id="targetLang"><option value="zh-TW">繁體中文</option><option value="zh-CN">簡體中文</option></select></div>
 </div>
-<p class="note">後端尚未部署時，翻譯按鈕不會產生假譯文。後端接口規格見專案 README。</p>
-<div class="row" style="margin-top:14px"><button id="checkBtn" class="secondary">測試後端連線</button><button id="translateBtn" disabled>開始翻譯</button><button id="exportBtn" class="secondary" disabled>匯出雙語 TXT</button></div>
-<div id="apiStatus" class="status warn">尚未連接翻譯後端。</div><div class="progress"><i id="progressBar"></i></div>
+<div class="row" style="margin-top:14px"><button id="loadModelBtn">載入本機翻譯模型</button><button id="translateBtn" disabled>開始翻譯</button><button id="exportBtn" class="secondary" disabled>匯出雙語 TXT</button></div>
+<div id="modelStatus" class="status warn">首次使用需要下載約 1–2GB 模型檔案；之後瀏覽器可能會快取模型。請使用支援 WebGPU 的新版 Chrome 或 Edge。</div>
+<div class="progress"><i id="modelProgress"></i></div>
+<div class="progress"><i id="progressBar"></i></div>
+<p class="note">翻譯前會先整理文章背景與術語，再逐段翻譯並參考相鄰段落。這能改善語境一致性，但小型模型仍可能誤解複雜語義，重要內容請人工校對。</p>
 </section>
 <section class="panel">
 <h2>3. 原文與譯文對照</h2>
@@ -57,14 +59,16 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs
 const $ = id => document.getElementById(id);
 let segments = [];
 let sourceName = "document";
+let generator = null;
+let modelBusy = false;
 const setStatus = (id,msg,type="") => { const el=$(id);el.textContent=msg;el.className="status "+type; };
 function splitText(text){
   const normalized=text.replace(/\r/g,"").replace(/[ \t]+\n/g,"\n").replace(/\n{3,}/g,"\n\n").trim();
   const paras=normalized.split(/\n\s*\n/).map(x=>x.replace(/\s*\n\s*/g," ").trim()).filter(Boolean);
   const out=[];let buf="";
-  for(const p of paras){if((buf+"\n\n"+p).length>2200&&buf){out.push(buf);buf=p}else{buf=buf?buf+"\n\n"+p:p}}
+  for(const p of paras){if((buf+"\n\n"+p).length>1800&&buf){out.push(buf);buf=p}else{buf=buf?buf+"\n\n"+p:p}}
   if(buf)out.push(buf);
-  return out.length?out:normalized.match(/[\s\S]{1,1800}/g)||[];
+  return out.length?out:normalized.match(/[\s\S]{1,1600}/g)||[];
 }
 function render(){
  const host=$("results");host.className="";
@@ -100,30 +104,74 @@ $("extractBtn").addEventListener("click",async()=>{
   }
   const text=all.join("\n\n");segments=splitText(text).map(source=>({source,translation:""}));sourceName=file.name.replace(/\.pdf$/i,"")||"translated";
   $("pageStat").textContent="頁數："+pdf.numPages;$("charStat").textContent="文字："+text.length.toLocaleString();$("chunkStat").textContent="段落："+segments.length;
-  $("translateBtn").disabled=!segments.length;$("exportBtn").disabled=!segments.length;
+  $("translateBtn").disabled=!segments.length||!generator;$("exportBtn").disabled=!segments.length;
   setStatus("fileStatus",text.trim()?"文字提取完成。原始 PDF 未上傳。":"沒有提取到文字；這可能是掃描圖片版 PDF，需要 OCR。",text.trim()?"ok":"warn");render();
  }catch(e){setStatus("fileStatus","讀取失敗："+e.message,"err")}finally{$("extractBtn").disabled=false}
 });
-function apiBase(){return $("apiUrl").value.trim().replace(/\/$/,"")}
-$("checkBtn").addEventListener("click",async()=>{
- const base=apiBase();if(!base){setStatus("apiStatus","請先輸入已部署的後端網址。","warn");return}
- try{const r=await fetch(base+"/health");if(!r.ok)throw new Error("HTTP "+r.status);const j=await r.json();if(!j.model_ready){setStatus("apiStatus","已連上後端，但翻譯模型尚未就緒："+(j.error||"請稍後再試"),"warn")}else{setStatus("apiStatus","後端與翻譯模型均已就緒。","ok")}}
- catch(e){setStatus("apiStatus","連線失敗："+e.message+"。請確認網址、HTTPS 與 CORS 設定。","err")}
-});
+async function generateText(prompt,maxTokens=500){
+ const messages=[
+  {role:"system",content:"You are a professional English-to-Chinese literary and technical translator. Follow the user's translation instructions precisely. Do not add explanations or omit source meaning."},
+  {role:"user",content:prompt+"\n/no_think"}
+ ];
+ const formatted=generator.tokenizer.apply_chat_template(messages,{tokenize:false,add_generation_prompt:true,enable_thinking:false});
+ const result=await generator(formatted,{max_new_tokens:maxTokens,do_sample:false,return_full_text:false});
+ let out=result?.[0]?.generated_text??"";
+ if(typeof out!=="string")out=String(out);
+ return out.trim();
+}
+async function loadModel(){
+ if(generator||modelBusy)return;
+ if(!navigator.gpu){setStatus("modelStatus","此瀏覽器或設備不支援 WebGPU，無法載入本機模型。請改用支援 WebGPU 的新版 Chrome／Edge 與相容設備。","err");return}
+ modelBusy=true;$("loadModelBtn").disabled=true;
+ try{
+  setStatus("modelStatus","正在檢查 WebGPU 並下載 Qwen3-1.7B 量化模型。首次載入可能需要較長時間…");
+  const {pipeline}=await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2");
+  generator=await pipeline("text-generation","huggingworld/Qwen3-1.7B",{
+   device:"webgpu",dtype:"q4f16",
+   progress_callback:p=>{
+    if(p.status==="progress"&&Number.isFinite(p.progress)){
+     $("modelProgress").style.width=Math.max(0,Math.min(100,p.progress))+"%";
+     setStatus("modelStatus","正在下載模型："+Math.round(p.progress)+"%");
+    }else if(p.status==="downloading")setStatus("modelStatus","正在下載模型檔案…");
+    else if(p.status==="ready")setStatus("modelStatus","模型載入完成。","ok");
+   }
+  });
+  $("modelProgress").style.width="100%";
+  setStatus("modelStatus","Qwen3-1.7B 已在本機載入。PDF 文字不會傳到翻譯伺服器。","ok");
+  $("translateBtn").disabled=!segments.length;
+ }catch(e){
+  generator=null;setStatus("modelStatus","模型載入失敗："+e.message+"。請確認 WebGPU、設備記憶體及網絡下載是否正常。","err");
+ }finally{modelBusy=false;$("loadModelBtn").disabled=!!generator;$("loadModelBtn").textContent=generator?"模型已載入":"重新載入模型"}
+}
+$("loadModelBtn").addEventListener("click",loadModel);
+async function buildDocumentContext(){
+ const batches=[];let buf="";
+ for(const s of segments){if((buf+"\n"+s.source).length>5200&&buf){batches.push(buf);buf=s.source}else buf=buf?buf+"\n"+s.source:s.source}
+ if(buf)batches.push(buf);
+ const notes=[];
+ for(let i=0;i<batches.length;i++){
+  setStatus("modelStatus","正在分析文章背景與術語："+(i+1)+"/"+batches.length);
+  notes.push(await generateText("請分析以下英文文章片段，為後續英譯中建立簡明的上下文資料。列出：文章主題與領域、核心論點或情節、人物／機構／代名詞指涉、重要專有名詞及建議固定譯法、語氣。只輸出精簡中文筆記，不要翻譯全文。\n\n"+batches[i],350));
+ }
+ if(notes.length===1)return notes[0];
+ return await generateText("請合併以下同一篇文章各部分的分析筆記，整理成一致的全篇背景與術語表。保留各部分之間的關係，刪除重複內容。\n\n"+notes.join("\n---\n"),500);
+}
 $("translateBtn").addEventListener("click",async()=>{
- const base=apiBase();if(!base){setStatus("apiStatus","尚未設定後端網址；目前不能進行真實翻譯。","warn");return}
+ if(!generator){setStatus("modelStatus","請先載入本機模型。","warn");return}
  $("translateBtn").disabled=true;let done=0;
  try{
+  const context=await buildDocumentContext();
   for(let i=0;i<segments.length;i++){
-   const s=segments[i];setStatus("apiStatus","正在翻譯第 "+(i+1)+" / "+segments.length+" 段…");
-   const r=await fetch(base+"/api/translate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:s.source,target_language:$("targetLang").value})});
-   if(!r.ok)throw new Error("第 "+(i+1)+" 段失敗：HTTP "+r.status);
-   const data=await r.json();if(typeof data.translation!=="string")throw new Error("後端回應格式不正確");
-   s.translation=data.translation;done++;$("progressBar").style.width=(done/segments.length*100)+"%";render();
+   const before=i>0?segments[i-1].source:"";
+   const after=i+1<segments.length?segments[i+1].source:"";
+   const prompt="請將下列英文段落翻譯成"+($("targetLang").value==="zh-TW"?"繁體中文":"簡體中文")+"。必須依據整篇文章背景判斷詞義、代名詞和專業術語，保持語氣與術語一致。只輸出譯文，不要摘要、解釋或補充。\n\n【全篇背景與術語表】\n"+context+"\n\n【前一段（只作語境參考）】\n"+before+"\n\n【本次需要翻譯的段落】\n"+segments[i].source+"\n\n【下一段（只作語境參考）】\n"+after;
+   setStatus("modelStatus","正在翻譯第 "+(i+1)+" / "+segments.length+" 段…");
+   segments[i].translation=await generateText(prompt,900);
+   done++;$("progressBar").style.width=(done/segments.length*100)+"%";render();
   }
-  setStatus("apiStatus","翻譯完成，共 "+done+" 段。你可以修改譯文並匯出。","ok");
- }catch(e){setStatus("apiStatus",e.message+"；已完成 "+done+" 段，可稍後重試。","err")}
- finally{$("translateBtn").disabled=false}
+  setStatus("modelStatus","翻譯完成，共 "+done+" 段。譯文可手動修改並匯出。","ok");
+ }catch(e){setStatus("modelStatus",e.message+"；已完成 "+done+" 段，可重新嘗試。","err")}
+ finally{$("translateBtn").disabled=!generator}
 });
 $("exportBtn").addEventListener("click",()=>{
  const text=segments.map((s,i)=>"第 "+(i+1)+" 段\n[英文原文]\n"+s.source+"\n\n[中文譯文]\n"+(s.translation||"（尚未翻譯）")).join("\n\n"+"=".repeat(48)+"\n\n");
