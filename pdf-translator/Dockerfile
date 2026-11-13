@@ -2,29 +2,24 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/opt/huggingface
 
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Download and install the open-source English-to-Chinese package at image-build time.
-RUN python - <<'PY'
-import argostranslate.package
-import argostranslate.translate
+# Convert the dedicated English-to-Chinese OPUS-MT model to an int8
+# CTranslate2 model during image build; the running service uses CPU.
+RUN ct2-transformers-converter \
+    --model Helsinki-NLP/opus-mt-en-zh \
+    --output_dir /app/opus-mt-en-zh \
+    --quantization int8 \
+    --force
 
-argostranslate.package.update_package_index()
-packages = [
-    p for p in argostranslate.package.get_available_packages()
-    if p.from_code == "en" and p.to_code == "zh"
-]
-if not packages:
-    raise SystemExit("No Argos Translate en-to-zh package is available")
-package = packages[-1]
-package_path = argostranslate.package.download_package(package)
-argostranslate.package.install_from_path(package_path)
-if argostranslate.translate.get_translation_from_codes("en", "zh") is None:
-    raise SystemExit("Argos Translate en-to-zh model installation failed")
+RUN python - <<'PY'
+from transformers import AutoTokenizer
+AutoTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-zh").save_pretrained("/app/tokenizer")
 PY
 
 COPY app.py .
